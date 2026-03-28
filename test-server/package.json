@@ -1,0 +1,13 @@
+{
+  "name": "x402-test-server",
+  "version": "0.1.0",
+  "description": "Minimal x402 test server for gateway end-to-end testing",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "express": "^4.19.2",
+    "x402": "^1.1.0"
+  }
+}
