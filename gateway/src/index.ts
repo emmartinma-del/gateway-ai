@@ -7,6 +7,7 @@ import { logger } from "./logger";
 import { createTransactionsRouter } from "./routes/transactions";
 import { createPayRouter } from "./routes/pay";
 import { createDashboardRouter } from "./routes/dashboard";
+import { createAdminRouter } from "./routes/admin";
 
 async function main() {
   // Load .env only in non-production environments.
@@ -68,6 +69,7 @@ async function main() {
   // API routes
   app.use("/v1/transactions", createTransactionsRouter(config));
   app.use("/v1/pay", createPayRouter(config));
+  app.use("/v1/admin", createAdminRouter(config));
 
   // Admin dashboard
   app.use("/dashboard", createDashboardRouter(config));

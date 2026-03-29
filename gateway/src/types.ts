@@ -18,6 +18,23 @@ export interface Transaction {
   txHash: string | null;
   // Error info
   errorMessage: string | null;
+  // Fee sweep: true once feeAmount has been transferred on-chain to feeRecipient
+  feeSwept: boolean;
+}
+
+export interface FeeSweepGroup {
+  asset: string;
+  network: string;
+  totalFeeAmount: bigint;
+  txIds: string[];
+}
+
+export interface FeeSweepResult {
+  asset: string;
+  network: string;
+  totalFeeAmount: string;
+  txCount: number;
+  txHash: string;
 }
 
 export interface PaymentRequirements {

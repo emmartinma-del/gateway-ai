@@ -3,7 +3,7 @@
 import { DatabaseSync } from "node:sqlite";
 import path from "path";
 import fs from "fs";
-import { Transaction, LedgerStats } from "./types";
+import { Transaction, LedgerStats, FeeSweepGroup } from "./types";
 
 let db: DatabaseSync;
 
@@ -31,6 +31,7 @@ export function initDb(dbPath: string): void {
       fee_amount TEXT NOT NULL DEFAULT '0',
       fee_bps INTEGER NOT NULL DEFAULT 0,
       fee_recipient TEXT,
+      fee_swept INTEGER NOT NULL DEFAULT 0,
       tx_hash TEXT,
       error_message TEXT
     );
@@ -44,14 +45,21 @@ export function initDb(dbPath: string): void {
   } catch {
     // Column already exists — ignore
   }
+
+  // Migration: add fee_swept column to existing databases
+  try {
+    db.exec(`ALTER TABLE transactions ADD COLUMN fee_swept INTEGER NOT NULL DEFAULT 0`);
+  } catch {
+    // Column already exists — ignore
+  }
 }
 
 export function insertTransaction(tx: Transaction): void {
   db.prepare(`
     INSERT INTO transactions
-      (id, created_at, status, target_url, method, amount, asset, network, recipient, fee_amount, fee_bps, fee_recipient, tx_hash, error_message)
+      (id, created_at, status, target_url, method, amount, asset, network, recipient, fee_amount, fee_bps, fee_recipient, fee_swept, tx_hash, error_message)
     VALUES
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     tx.id,
     tx.createdAt,
@@ -65,6 +73,7 @@ export function insertTransaction(tx: Transaction): void {
     tx.feeAmount,
     tx.feeBps,
     tx.feeRecipient,
+    tx.feeSwept ? 1 : 0,
     tx.txHash,
     tx.errorMessage
   );
@@ -112,6 +121,7 @@ function rowToTransaction(row: DbRow): Transaction {
     feeAmount: row.fee_amount as string,
     feeBps: row.fee_bps as number,
     feeRecipient: (row.fee_recipient as string | null) ?? null,
+    feeSwept: (row.fee_swept as number) === 1,
     txHash: (row.tx_hash as string | null) ?? null,
     errorMessage: (row.error_message as string | null) ?? null,
   };
@@ -160,6 +170,38 @@ export function getTodayStats(): { completed: number; failed: number } {
     )
     .get(`${todayPrefix}%`) as { count: number };
   return { completed: completed.count, failed: failed.count };
+}
+
+/**
+ * Returns pending fee sweep groups: completed transactions with fee_swept=0 and feeAmount > 0,
+ * aggregated by (asset, network). Caller sweeps each group with one ERC-20 transfer.
+ */
+export function getPendingFeeSweepGroups(): FeeSweepGroup[] {
+  type SweepRow = { asset: string; network: string; total_fee: string; ids: string };
+  const rows = db.prepare(`
+    SELECT asset, network,
+           SUM(CAST(fee_amount AS REAL)) as total_fee,
+           GROUP_CONCAT(id) as ids
+    FROM transactions
+    WHERE status = 'completed' AND fee_swept = 0 AND CAST(fee_amount AS REAL) > 0
+    GROUP BY asset, network
+  `).all() as SweepRow[];
+
+  return rows.map((r) => ({
+    asset: r.asset,
+    network: r.network,
+    totalFeeAmount: BigInt(Math.round(parseFloat(r.total_fee))),
+    txIds: r.ids.split(","),
+  }));
+}
+
+/**
+ * Marks the given transaction IDs as fee_swept = 1.
+ */
+export function markFeesSwept(txIds: string[]): void {
+  if (txIds.length === 0) return;
+  const placeholders = txIds.map(() => "?").join(", ");
+  db.prepare(`UPDATE transactions SET fee_swept = 1 WHERE id IN (${placeholders})`).run(...txIds);
 }
 
 export function getStats(): LedgerStats {
