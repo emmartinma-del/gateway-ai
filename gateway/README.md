@@ -108,7 +108,42 @@ The gateway takes a **0.15% fee (15 bps)** on every payment processed. At $1M/da
 
 - **Testnet only until CEO approves mainnet** (`NETWORK=base-sepolia`)
 - Private key never leaves the server environment
-- No auth layer on API for MVP (add before public exposure)
+- API key authentication required for all endpoints on mainnet (`API_KEYS`)
+
+## Production Deployment (aiagentpay.cloud)
+
+The repo includes a full production stack using Docker Compose + Caddy (auto-TLS via Let's Encrypt).
+
+### Prerequisites
+
+- Docker + Docker Compose on the target server
+- DNS A record for `aiagentpay.cloud` pointing to the server's public IP
+- Ports 80 and 443 open in the server firewall
+
+### Steps
+
+```bash
+# 1. Copy and fill in secrets
+cp .env.example .env
+# Set WALLET_PRIVATE_KEY, FEE_RECIPIENT_ADDRESS, API_KEYS,
+# ALLOWED_DOMAINS, MAX_PAYMENT_PER_REQUEST, MAX_DAILY_SPEND
+# Set NETWORK=base for mainnet
+
+# 2. Start the stack
+docker compose up -d
+
+# Caddy auto-provisions a Let's Encrypt TLS certificate on first request.
+# The gateway is live at https://aiagentpay.cloud
+```
+
+### Services
+
+| Service   | Role                                                          |
+|-----------|---------------------------------------------------------------|
+| `gateway` | Express payment gateway (internal, port 3001)                 |
+| `caddy`   | Reverse proxy — terminates TLS, forwards traffic to gateway   |
+
+Gateway data (SQLite) persists in the `gateway-data` Docker volume.
 
 ## File Structure
 

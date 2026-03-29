@@ -1,0 +1,45 @@
+services:
+  gateway:
+    build: .
+    restart: unless-stopped
+    environment:
+      # Required — inject via .env or platform secrets manager
+      WALLET_PRIVATE_KEY: ${WALLET_PRIVATE_KEY}
+      NETWORK: ${NETWORK:-base}
+      FEE_RECIPIENT_ADDRESS: ${FEE_RECIPIENT_ADDRESS}
+      API_KEYS: ${API_KEYS}
+      ALLOWED_DOMAINS: ${ALLOWED_DOMAINS}
+      MAX_PAYMENT_PER_REQUEST: ${MAX_PAYMENT_PER_REQUEST}
+      MAX_DAILY_SPEND: ${MAX_DAILY_SPEND}
+      # Optional
+      GATEWAY_FEE_BPS: ${GATEWAY_FEE_BPS:-15}
+      PORT: "3001"
+    volumes:
+      - gateway-data:/data
+    # Not exposed externally — Caddy proxies inbound traffic
+    expose:
+      - "3001"
+    networks:
+      - internal
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3 (QUIC)
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - internal
+
+volumes:
+  gateway-data:
+  caddy-data:
+  caddy-config:
+
+networks:
+  internal:
