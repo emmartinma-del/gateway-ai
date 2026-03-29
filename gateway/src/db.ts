@@ -30,20 +30,28 @@ export function initDb(dbPath: string): void {
       recipient TEXT NOT NULL,
       fee_amount TEXT NOT NULL DEFAULT '0',
       fee_bps INTEGER NOT NULL DEFAULT 0,
+      fee_recipient TEXT,
       tx_hash TEXT,
       error_message TEXT
     );
     CREATE INDEX IF NOT EXISTS idx_transactions_status ON transactions(status);
     CREATE INDEX IF NOT EXISTS idx_transactions_created ON transactions(created_at);
   `);
+
+  // Migration: add fee_recipient column to existing databases
+  try {
+    db.exec(`ALTER TABLE transactions ADD COLUMN fee_recipient TEXT`);
+  } catch {
+    // Column already exists — ignore
+  }
 }
 
 export function insertTransaction(tx: Transaction): void {
   db.prepare(`
     INSERT INTO transactions
-      (id, created_at, status, target_url, method, amount, asset, network, recipient, fee_amount, fee_bps, tx_hash, error_message)
+      (id, created_at, status, target_url, method, amount, asset, network, recipient, fee_amount, fee_bps, fee_recipient, tx_hash, error_message)
     VALUES
-      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     tx.id,
     tx.createdAt,
@@ -56,6 +64,7 @@ export function insertTransaction(tx: Transaction): void {
     tx.recipient,
     tx.feeAmount,
     tx.feeBps,
+    tx.feeRecipient,
     tx.txHash,
     tx.errorMessage
   );
@@ -102,6 +111,7 @@ function rowToTransaction(row: DbRow): Transaction {
     recipient: row.recipient as string,
     feeAmount: row.fee_amount as string,
     feeBps: row.fee_bps as number,
+    feeRecipient: (row.fee_recipient as string | null) ?? null,
     txHash: (row.tx_hash as string | null) ?? null,
     errorMessage: (row.error_message as string | null) ?? null,
   };
@@ -117,6 +127,39 @@ export function listTransactions(limit = 50, offset = 0): Transaction[] {
     .prepare("SELECT * FROM transactions ORDER BY created_at DESC LIMIT ? OFFSET ?")
     .all(limit, offset) as DbRow[];
   return rows.map(rowToTransaction);
+}
+
+/**
+ * Returns total amount spent (completed transactions) today (UTC) in atomic units.
+ */
+export function getDailySpend(): bigint {
+  const todayPrefix = new Date().toISOString().slice(0, 10); // "YYYY-MM-DD"
+  const row = db
+    .prepare(
+      `SELECT COALESCE(SUM(CAST(amount AS REAL)), 0) as total
+       FROM transactions
+       WHERE status = 'completed' AND created_at LIKE ?`
+    )
+    .get(`${todayPrefix}%`) as { total: number };
+  return BigInt(Math.round(row.total));
+}
+
+/**
+ * Returns today's (UTC) transaction counts for monitoring/alerting.
+ */
+export function getTodayStats(): { completed: number; failed: number } {
+  const todayPrefix = new Date().toISOString().slice(0, 10);
+  const completed = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM transactions WHERE status = 'completed' AND created_at LIKE ?`
+    )
+    .get(`${todayPrefix}%`) as { count: number };
+  const failed = db
+    .prepare(
+      `SELECT COUNT(*) as count FROM transactions WHERE status = 'failed' AND created_at LIKE ?`
+    )
+    .get(`${todayPrefix}%`) as { count: number };
+  return { completed: completed.count, failed: failed.count };
 }
 
 export function getStats(): LedgerStats {

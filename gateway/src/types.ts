@@ -13,6 +13,7 @@ export interface Transaction {
   // Gateway fee
   feeAmount: string; // gateway fee in same units as amount
   feeBps: number; // fee in basis points
+  feeRecipient: string | null; // company wallet address for fee collection
   // On-chain proof
   txHash: string | null;
   // Error info

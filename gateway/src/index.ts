@@ -1,29 +1,57 @@
-import "dotenv/config";
 import express from "express";
 import cors from "cors";
 import { initDb } from "./db";
 import { initWallet } from "./payment";
+import { loadConfig, getProductionWarnings } from "./config";
+import { logger } from "./logger";
 import transactionsRouter from "./routes/transactions";
-import payRouter from "./routes/pay";
+import { createPayRouter } from "./routes/pay";
 import dashboardRouter from "./routes/dashboard";
 
-const PORT = parseInt(process.env.PORT ?? "3001", 10);
-const DB_PATH = process.env.DATABASE_PATH ?? "./data/gateway.db";
-
 async function main() {
+  // Load .env only in non-production environments.
+  // In production, secrets MUST be injected by the deployment platform
+  // (Docker secrets, K8s secrets, AWS Secrets Manager, etc.)
+  // and MUST NOT be stored in a plain .env file.
+  if (process.env.NODE_ENV !== "production") {
+    // eslint-disable-next-line @typescript-eslint/no-var-requires
+    require("dotenv").config();
+  }
+
+  const config = loadConfig();
+
   // Initialize database
-  initDb(DB_PATH);
-  console.log(`[db] SQLite ledger at ${DB_PATH}`);
+  initDb(config.dbPath);
+  logger.info("db.init", { path: config.dbPath });
 
   // Initialize wallet
   let walletAddr: string;
   try {
     walletAddr = initWallet();
-    console.log(`[wallet] Gateway wallet: ${walletAddr}`);
-    console.log(`[wallet] Network: ${process.env.NETWORK ?? "base-sepolia"}`);
+    logger.info("wallet.init", {
+      address: walletAddr,
+      network: config.network,
+      feeRecipient: config.feeRecipientAddress ?? "not configured",
+    });
   } catch (err) {
-    console.warn(`[wallet] WARNING: ${err instanceof Error ? err.message : err}`);
-    console.warn("[wallet] Payment signing will fail until WALLET_PRIVATE_KEY is set.");
+    const message = err instanceof Error ? err.message : String(err);
+    logger.warn("wallet.init_failed", { message });
+    logger.warn("wallet.degraded", {
+      detail: "Payment signing will fail until WALLET_PRIVATE_KEY is set",
+    });
+  }
+
+  // Production readiness check
+  const warnings = getProductionWarnings(config);
+  for (const w of warnings) {
+    logger.warn("config.production_warning", { warning: w });
+  }
+  if (config.network === "base" && warnings.length > 0) {
+    logger.error("config.mainnet_not_ready", {
+      detail: "Refusing to start on mainnet with unresolved configuration warnings",
+      warnings,
+    });
+    process.exit(1);
   }
 
   const app = express();
@@ -34,12 +62,12 @@ async function main() {
 
   // Health check
   app.get("/health", (req, res) => {
-    res.json({ status: "ok", timestamp: new Date().toISOString() });
+    res.json({ status: "ok", network: config.network, timestamp: new Date().toISOString() });
   });
 
   // API routes
   app.use("/v1/transactions", transactionsRouter);
-  app.use("/v1/pay", payRouter);
+  app.use("/v1/pay", createPayRouter(config));
 
   // Admin dashboard
   app.use("/dashboard", dashboardRouter);
@@ -47,14 +75,20 @@ async function main() {
   // Root redirect
   app.get("/", (req, res) => res.redirect("/dashboard"));
 
-  app.listen(PORT, () => {
-    console.log(`[gateway] x402 Payment Gateway running on http://localhost:${PORT}`);
-    console.log(`[gateway] Dashboard: http://localhost:${PORT}/dashboard`);
-    console.log(`[gateway] API: POST http://localhost:${PORT}/v1/pay`);
+  app.listen(config.port, () => {
+    logger.info("gateway.started", {
+      port: config.port,
+      network: config.network,
+      allowedDomains: config.allowedDomains.size > 0
+        ? [...config.allowedDomains]
+        : "all (unrestricted)",
+      maxPaymentPerRequest: config.maxPaymentPerRequest.toString(),
+      maxDailySpend: config.maxDailySpend.toString(),
+    });
   });
 }
 
 main().catch((err) => {
-  console.error("[fatal]", err);
+  logger.error("fatal", { message: err instanceof Error ? err.message : String(err) });
   process.exit(1);
 });
