@@ -16,30 +16,12 @@ services:
       PORT: "3001"
     volumes:
       - gateway-data:/data
-    # Not exposed externally — Caddy proxies inbound traffic
-    expose:
-      - "3001"
-    networks:
-      - internal
-
-  caddy:
-    image: caddy:2-alpine
-    restart: unless-stopped
-    ports:
-      - "80:80"
-      - "443:443"
-      - "443:443/udp"   # HTTP/3 (QUIC)
-    volumes:
-      - ./Caddyfile:/etc/caddy/Caddyfile:ro
-      - caddy-data:/data
-      - caddy-config:/config
-    networks:
-      - internal
+    labels:
+      - "traefik.enable=true"
+      - "traefik.http.routers.aiagentpay.rule=Host(`aiagentpay.cloud`)"
+      - "traefik.http.routers.aiagentpay.entrypoints=websecure"
+      - "traefik.http.routers.aiagentpay.tls.certresolver=letsencrypt"
+      - "traefik.http.services.aiagentpay.loadbalancer.server.port=3001"
 
 volumes:
   gateway-data:
-  caddy-data:
-  caddy-config:
-
-networks:
-  internal:
