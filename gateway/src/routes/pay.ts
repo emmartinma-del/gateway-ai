@@ -3,9 +3,11 @@ import { proxyRequest } from "../proxy";
 import { logger } from "../logger";
 import type { GatewayConfig } from "../config";
 import type { ProxyRequest } from "../types";
+import { requireBearerAuth } from "../middleware/auth";
 
 export function createPayRouter(config: GatewayConfig): Router {
   const router = Router();
+  router.use(requireBearerAuth(config));
 
   // POST /v1/pay
   // Body: { url, method?, headers?, body? }

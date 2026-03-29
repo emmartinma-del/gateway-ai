@@ -5,7 +5,6 @@ import { logger } from "./logger";
 import type { GatewayConfig } from "./config";
 import type { ProxyRequest, ProxyResponse, Transaction } from "./types";
 
-const GATEWAY_FEE_BPS = parseInt(process.env.GATEWAY_FEE_BPS ?? "15", 10);
 const MAX_RETRIES = 1; // one payment attempt
 
 // Alert threshold: if today's error rate exceeds this ratio, emit a warning log
@@ -95,7 +94,7 @@ export async function proxyRequest(
   }
 
   const txId = crypto.randomUUID();
-  const { feeAmount } = calculateFee(requirements.maxAmountRequired);
+  const { feeAmount } = calculateFee(requirements.maxAmountRequired, config.gatewayFeeBps);
 
   const tx: Transaction = {
     id: txId,
@@ -108,10 +107,11 @@ export async function proxyRequest(
     network: requirements.network,
     recipient: requirements.payTo,
     feeAmount: feeAmount.toString(),
-    feeBps: GATEWAY_FEE_BPS,
+    feeBps: config.gatewayFeeBps,
     feeRecipient: config.feeRecipientAddress,
     txHash: null,
     errorMessage: null,
+    feeSwept: false,
   };
 
   insertTransaction(tx);
@@ -125,7 +125,7 @@ export async function proxyRequest(
     network: requirements.network,
     recipient: requirements.payTo,
     feeAmount: feeAmount.toString(),
-    feeBps: GATEWAY_FEE_BPS,
+    feeBps: config.gatewayFeeBps,
     feeRecipient: config.feeRecipientAddress,
   });
 

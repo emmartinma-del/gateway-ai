@@ -4,9 +4,9 @@ import { initDb } from "./db";
 import { initWallet } from "./payment";
 import { loadConfig, getProductionWarnings } from "./config";
 import { logger } from "./logger";
-import transactionsRouter from "./routes/transactions";
+import { createTransactionsRouter } from "./routes/transactions";
 import { createPayRouter } from "./routes/pay";
-import dashboardRouter from "./routes/dashboard";
+import { createDashboardRouter } from "./routes/dashboard";
 
 async function main() {
   // Load .env only in non-production environments.
@@ -66,11 +66,11 @@ async function main() {
   });
 
   // API routes
-  app.use("/v1/transactions", transactionsRouter);
+  app.use("/v1/transactions", createTransactionsRouter(config));
   app.use("/v1/pay", createPayRouter(config));
 
   // Admin dashboard
-  app.use("/dashboard", dashboardRouter);
+  app.use("/dashboard", createDashboardRouter(config));
 
   // Root redirect
   app.get("/", (req, res) => res.redirect("/dashboard"));

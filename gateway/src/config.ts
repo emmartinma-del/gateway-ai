@@ -9,6 +9,11 @@ export interface GatewayConfig {
   maxDailySpend: bigint;
   // Allowlist of hostnames. Empty set = allow all (dev only).
   allowedDomains: Set<string>;
+  // API_KEYS: comma-separated bearer tokens for authenticating API calls.
+  // Empty set = no auth (dev only).
+  apiKeys: Set<string>;
+  // GATEWAY_FEE_BPS: fee in basis points taken from each payment.
+  gatewayFeeBps: number;
 }
 
 export function loadConfig(): GatewayConfig {
@@ -36,7 +41,21 @@ export function loadConfig(): GatewayConfig {
       .filter(Boolean)
   );
 
-  return { network, port, dbPath, feeRecipientAddress, maxPaymentPerRequest, maxDailySpend, allowedDomains };
+  // API_KEYS: comma-separated bearer tokens for API authentication.
+  // Empty = no auth (not safe for production).
+  const apiKeysStr = process.env.API_KEYS ?? "";
+  const apiKeys = new Set<string>(
+    apiKeysStr
+      .split(",")
+      .map((k) => k.trim())
+      .filter(Boolean)
+  );
+
+  // GATEWAY_FEE_BPS: fee taken from each payment in basis points (1 BPS = 0.01%).
+  // Default 15 = 0.15%.
+  const gatewayFeeBps = parseInt(process.env.GATEWAY_FEE_BPS ?? "15", 10);
+
+  return { network, port, dbPath, feeRecipientAddress, maxPaymentPerRequest, maxDailySpend, allowedDomains, apiKeys, gatewayFeeBps };
 }
 
 /**
@@ -58,6 +77,9 @@ export function getProductionWarnings(config: GatewayConfig): string[] {
   }
   if (config.allowedDomains.size === 0) {
     warnings.push("ALLOWED_DOMAINS not configured — gateway will proxy to any domain");
+  }
+  if (config.apiKeys.size === 0) {
+    warnings.push("API_KEYS not set — all endpoints are unauthenticated");
   }
   return warnings;
 }

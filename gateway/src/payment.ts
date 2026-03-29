@@ -1,11 +1,9 @@
-import { createWalletClient, http, type WalletClient } from "viem";
+import { createWalletClient, http, erc20Abi, type WalletClient } from "viem";
 import { privateKeyToAccount } from "viem/accounts";
 import { baseSepolia, base } from "viem/chains";
 // @ts-ignore — x402 is ESM-only; loaded via require shimmed by ts-node/node
 import { createPaymentHeader } from "x402/client";
 import type { PaymentRequirements } from "./types";
-
-const GATEWAY_FEE_BPS = parseInt(process.env.GATEWAY_FEE_BPS ?? "15", 10);
 
 let walletClient: WalletClient;
 let walletAddress: string;
@@ -82,13 +80,13 @@ export function parsePaymentRequirements(
 }
 
 /**
- * Calculate gateway fee: GATEWAY_FEE_BPS basis points of the payment amount.
+ * Calculate gateway fee: feeBps basis points of the payment amount.
  * Returns fee in the same atomic units as amount.
  */
-export function calculateFee(amountStr: string): { netAmount: bigint; feeAmount: bigint } {
+export function calculateFee(amountStr: string, feeBps: number): { netAmount: bigint; feeAmount: bigint } {
   const amount = BigInt(amountStr);
   // fee = amount * feeBps / 10000
-  const feeAmount = (amount * BigInt(GATEWAY_FEE_BPS)) / 10000n;
+  const feeAmount = (amount * BigInt(feeBps)) / 10000n;
   const netAmount = amount - feeAmount;
   return { netAmount, feeAmount };
 }
@@ -111,4 +109,45 @@ export async function signPayment(requirements: PaymentRequirements): Promise<st
   );
 
   return paymentHeader;
+}
+
+/**
+ * Sweep accumulated gateway fees to feeRecipient.
+ *
+ * For ERC-20 assets: sends an ERC-20 transfer(to, amount) from the gateway wallet.
+ * For native ETH (asset == "ETH"): sends a value transfer.
+ *
+ * Returns the transaction hash of the on-chain sweep transaction.
+ */
+export async function sweepFees(
+  asset: string,
+  amount: bigint,
+  feeRecipient: string
+): Promise<string> {
+  if (!walletClient) {
+    throw new Error("Wallet not initialized. Call initWallet() first.");
+  }
+  if (amount === 0n) {
+    throw new Error("Nothing to sweep: amount is zero.");
+  }
+
+  const to = feeRecipient as `0x${string}`;
+
+  // Native ETH
+  if (asset.toLowerCase() === "eth") {
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    const hash = await (walletClient as any).sendTransaction({ to, value: amount });
+    return hash as string;
+  }
+
+  // ERC-20 token
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hash = await (walletClient as any).writeContract({
+    address: asset as `0x${string}`,
+    abi: erc20Abi,
+    functionName: "transfer",
+    args: [to, amount],
+  });
+
+  return hash as string;
 }

@@ -1,10 +1,14 @@
 import { Router, Request, Response } from "express";
 import { getStats, listTransactions } from "../db";
 import { getWalletAddress } from "../payment";
+import { requireDashboardAuth } from "../middleware/auth";
+import type { GatewayConfig } from "../config";
 
-const router = Router();
+export function createDashboardRouter(config: GatewayConfig): Router {
+  const router = Router();
+  router.use(requireDashboardAuth(config));
 
-router.get("/", (req: Request, res: Response) => {
+  router.get("/", (req: Request, res: Response) => {
   const stats = getStats();
   const recent = listTransactions(20);
   const walletAddr = (() => {
@@ -124,8 +128,9 @@ router.get("/", (req: Request, res: Response) => {
 </body>
 </html>`;
 
-  res.setHeader("Content-Type", "text/html");
-  res.send(html);
-});
+    res.setHeader("Content-Type", "text/html");
+    res.send(html);
+  });
 
-export default router;
+  return router;
+}
