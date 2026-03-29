@@ -1,13 +1,8 @@
-import express from "express";
-import cors from "cors";
 import { initDb } from "./db";
 import { initWallet } from "./payment";
 import { loadConfig, getProductionWarnings } from "./config";
 import { logger } from "./logger";
-import { createTransactionsRouter } from "./routes/transactions";
-import { createPayRouter } from "./routes/pay";
-import { createDashboardRouter } from "./routes/dashboard";
-import { createAdminRouter } from "./routes/admin";
+import { createApp } from "./app";
 
 async function main() {
   // Load .env only in non-production environments.
@@ -55,27 +50,7 @@ async function main() {
     process.exit(1);
   }
 
-  const app = express();
-
-  app.use(cors());
-  app.use(express.json({ limit: "1mb" }));
-  app.use(express.text({ limit: "1mb" }));
-
-  // Health check
-  app.get("/health", (req, res) => {
-    res.json({ status: "ok", network: config.network, timestamp: new Date().toISOString() });
-  });
-
-  // API routes
-  app.use("/v1/transactions", createTransactionsRouter(config));
-  app.use("/v1/pay", createPayRouter(config));
-  app.use("/v1/admin", createAdminRouter(config));
-
-  // Admin dashboard
-  app.use("/dashboard", createDashboardRouter(config));
-
-  // Root redirect
-  app.get("/", (req, res) => res.redirect("/dashboard"));
+  const app = createApp(config);
 
   app.listen(config.port, () => {
     logger.info("gateway.started", {
