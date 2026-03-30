@@ -1,6 +1,6 @@
 import { initDb } from "./db";
 import { initWallet } from "./payment";
-import { loadConfig, getProductionWarnings } from "./config";
+import { loadConfig, getProductionWarnings, getProductionAdvisories } from "./config";
 import { logger } from "./logger";
 import { createApp } from "./app";
 
@@ -37,17 +37,22 @@ async function main() {
     });
   }
 
-  // Production readiness check
-  const warnings = getProductionWarnings(config);
-  for (const w of warnings) {
-    logger.warn("config.production_warning", { warning: w });
+  // Production readiness check — blocking errors
+  const errors = getProductionWarnings(config);
+  for (const e of errors) {
+    logger.warn("config.production_error", { error: e });
   }
-  if (config.network === "base" && warnings.length > 0) {
+  if (config.network === "base" && errors.length > 0) {
     logger.error("config.mainnet_not_ready", {
-      detail: "Refusing to start on mainnet with unresolved configuration warnings",
-      warnings,
+      detail: "Refusing to start on mainnet with unresolved configuration errors",
+      errors,
     });
     process.exit(1);
+  }
+
+  // Non-blocking advisories
+  for (const a of getProductionAdvisories(config)) {
+    logger.warn("config.production_advisory", { advisory: a });
   }
 
   const app = createApp(config);

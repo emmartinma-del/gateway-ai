@@ -59,27 +59,38 @@ export function loadConfig(): GatewayConfig {
 }
 
 /**
- * Returns a list of human-readable warnings for production (mainnet) deployments.
- * All warnings must be resolved before mainnet go-live.
+ * Returns blocking errors for mainnet: gateway refuses to start if any are present.
+ * These represent hard security/safety requirements.
  */
 export function getProductionWarnings(config: GatewayConfig): string[] {
   if (config.network !== "base") return [];
 
-  const warnings: string[] = [];
+  const errors: string[] = [];
   if (!config.feeRecipientAddress) {
-    warnings.push("FEE_RECIPIENT_ADDRESS not set — fee sweep destination is unknown");
+    errors.push("FEE_RECIPIENT_ADDRESS not set — fee sweep destination is unknown");
   }
   if (config.maxDailySpend === 0n) {
-    warnings.push("MAX_DAILY_SPEND not configured — gateway has no daily spend cap");
+    errors.push("MAX_DAILY_SPEND not configured — gateway has no daily spend cap");
   }
   if (config.maxPaymentPerRequest === 0n) {
-    warnings.push("MAX_PAYMENT_PER_REQUEST not configured — gateway has no per-request cap");
-  }
-  if (config.allowedDomains.size === 0) {
-    warnings.push("ALLOWED_DOMAINS not configured — gateway will proxy to any domain");
+    errors.push("MAX_PAYMENT_PER_REQUEST not configured — gateway has no per-request cap");
   }
   if (config.apiKeys.size === 0) {
-    warnings.push("API_KEYS not set — all endpoints are unauthenticated");
+    errors.push("API_KEYS not set — all endpoints are unauthenticated");
   }
-  return warnings;
+  return errors;
+}
+
+/**
+ * Returns non-blocking advisory warnings for mainnet.
+ * Gateway starts but logs these at warn level.
+ */
+export function getProductionAdvisories(config: GatewayConfig): string[] {
+  if (config.network !== "base") return [];
+
+  const advisories: string[] = [];
+  if (config.allowedDomains.size === 0) {
+    advisories.push("ALLOWED_DOMAINS not configured — gateway will proxy to any domain (tighten once clients are known)");
+  }
+  return advisories;
 }
