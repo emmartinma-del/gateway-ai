@@ -3,7 +3,7 @@ services:
     build: .
     restart: unless-stopped
     environment:
-      # Required — inject via .env or platform secrets manager
+      # Required — inject via .env file (never commit secrets)
       WALLET_PRIVATE_KEY: ${WALLET_PRIVATE_KEY}
       NETWORK: ${NETWORK:-base}
       FEE_RECIPIENT_ADDRESS: ${FEE_RECIPIENT_ADDRESS}
@@ -16,12 +16,28 @@ services:
       PORT: "3001"
     volumes:
       - gateway-data:/data
-    labels:
-      - "traefik.enable=true"
-      - "traefik.http.routers.aiagentpay.rule=Host(`aiagentpay.cloud`)"
-      - "traefik.http.routers.aiagentpay.entrypoints=websecure"
-      - "traefik.http.routers.aiagentpay.tls.certresolver=letsencrypt"
-      - "traefik.http.services.aiagentpay.loadbalancer.server.port=3001"
+    networks:
+      - internal
+    # No external ports — Caddy proxies all inbound traffic
+
+  caddy:
+    image: caddy:2-alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+      - "443:443/udp"   # HTTP/3
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy-data:/data
+      - caddy-config:/config
+    networks:
+      - internal
+
+networks:
+  internal:
 
 volumes:
   gateway-data:
+  caddy-data:
+  caddy-config:
