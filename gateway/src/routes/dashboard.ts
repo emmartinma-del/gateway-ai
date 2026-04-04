@@ -1,12 +1,10 @@
 import { Router, Request, Response } from "express";
 import { getStats, listTransactions } from "../db";
 import { getWalletAddress } from "../payment";
-import { requireDashboardAuth } from "../middleware/auth";
 import type { GatewayConfig } from "../config";
 
 export function createDashboardRouter(config: GatewayConfig): Router {
   const router = Router();
-  router.use(requireDashboardAuth(config));
 
   router.get("/", (req: Request, res: Response) => {
   const stats = getStats();
